@@ -7,7 +7,7 @@ yum update -y
 curl --silent --location https://rpm.nodesource.com/setup_14.x | sudo bash -
 
 # Install node
-sudo yum install -y nodejs
+yum install -y nodejs
 
 # Install git
 yum install -y git
