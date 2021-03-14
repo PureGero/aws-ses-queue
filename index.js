@@ -87,10 +87,10 @@ async function main() {
 
   } while (emailsSent);
 
-  require('child_process').exec('shutdown -h +10');
+  require('child_process').exec('poweroff');
   process.exit();
 }
 
-setTimeout(() => require('child_process').exec('shutdown -h +10'), 12 * 60 * 60 * 1000);
+setTimeout(() => require('child_process').exec('poweroff'), 12 * 60 * 60 * 1000);
 
 main();
