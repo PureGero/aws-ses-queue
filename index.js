@@ -2,89 +2,90 @@
 // process.env.AWS_SDK_LOAD_CONFIG = 1;
 
 const AWS = require('aws-sdk');
-const bodyParser = require('body-parser');
-const express = require('express');
-
-const app = express();
-const port = 80;
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-
-AWS.config.getCredentials((err) => {
-  if (err) {
-    // credentials not loaded
-    console.error(err.stack);
-    console.error('AWS credentials aren\'t set! Is this an Amazon EC2 instance?');
-    process.exit(1);
-  }
-});
-
+const s3 = new AWS.S3();
 const ses = new AWS.SES();
 
-const emailQueue = [];
+let emailsSent;
+let emailsPerSecond;
 
-const tick = async () => {
-  const start = Date.now();
-  let mail;
-  let count = 0;
+async function getBucketNames() {
+  return (await s3.listBuckets().promise()).Buckets.filter(b => b.Name.startsWith('mail-server-send-queue-')).map(bucket => bucket.Name);
+}
+
+async function sendFirstEmailInBucket(bucket) {
+  const objects = (await s3.listObjects({ Bucket: bucket }).promise()).Contents;
+
+  if (objects.length) {
+    await sendEmails(bucket, objects[0].Key);
+  }
+}
+
+async function sendEmails(bucket, key) {
+  const data = await s3.getObject({ Bucket: bucket, Key: key }).promise();
+  await s3.deleteObject({ Bucket: bucket, Key: key }).promise();
+  
   try {
-    while (mail = emailQueue.shift()) {
-      await ses.sendEmail({
-        Destination: {
-          ToAddresses: [mail.to],
-        },
-        Message: {
-          Body: {
-            Html: {
-             Charset: 'UTF-8',
-             Data: mail.body
-            },
-          },
-          Subject: {
-            Charset: 'UTF-8',
-            Data: mail.subject
-          },
-        },
-        Source: mail.from,
-      }).promise();
-      count++;
+    const json = JSON.parse(data.Body);
+    if (json.emails) {
+      for (let i = 0; i < json.emails.length; i++) {
+        await sendEmail(json.emails[i]);
+      }
     }
   } catch (e) {
     console.error(e);
-    let json = JSON.stringify(e);
-    if (~json.indexOf('Maximum sending rate exceeded') || ~json.indexOf('Daily sending quota exceeded')) {
-      console.log('Quota reached, trying again next second');
-      emailQueue.unshift(mail);
+  }
+}
+
+async function sendEmail(mail) {
+  const throttle = new Promise(resolve => setTimeout(resolve, 1000 / emailsPerSecond + 1));
+
+  try {
+    await ses.sendEmail({
+      Destination: {
+        ToAddresses: [mail.to],
+      },
+      Message: {
+        Body: {
+          Html: {
+          Charset: 'UTF-8',
+          Data: mail.body
+          },
+        },
+        Subject: {
+          Charset: 'UTF-8',
+          Data: mail.subject
+        },
+      },
+      Source: mail.from,
+    }).promise();
+  } catch (e) {
+    console.error(e);
+  }
+
+  await throttle;
+}
+
+async function main() {
+  emailsPerSecond = (await ses.getSendQuota()).MaxSendRate;
+
+  do {
+    emailsSent = 0;
+
+    const sendQuota = await ses.getSendQuota();
+
+    if (sendQuota.SentLast24Hours + 5000 > sendQuota.Max24HourSend) {
+      console.error('Daily send quota reached, trying again in an hour');
+      setTimeout(main, 60 * 60 * 1000);
+      return;
     }
-  }
 
-  if (count > 0) {
-    console.log(`Sent ${count} emails (${Date.now() - start}ms)`);
-  }
+    const buckets = await getBucketNames();
+
+    for (let i = 0; i < buckets.length; i++) {
+      await sendFirstEmailInBucket(buckets[i]);
+    }
+
+  } while (emailsSent);
 }
 
-setInterval(tick, 1000);
-
-const sendMail = (to, from, subject, body) => {
-  emailQueue.push({
-    to,
-    from,
-    subject,
-    body
-  });
-}
-
-app.post('/', async (req, res) => {
-  if (!req.body || !req.body.to || !req.body.from || !req.body.subject || !req.body.body) {
-    res.status(400).send('Missing parameters');
-  }
-
-  await sendMail(req.body.to, req.body.from, req.body.subject, req.body.body);
-  res.send('Email queued');
-});
-
-app.listen(port, () => {
-  console.log(`aws-ses-queue listening at http://0.0.0.0:${port}`);
-});
-
-module.export = sendMail;
+main();
