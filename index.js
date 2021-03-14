@@ -87,9 +87,9 @@ async function main() {
 
   } while (emailsSent);
 
-  require('child_process').exec('shutdown now');
+  require('child_process').exec('shutdown -h now');
 }
 
-setTimeout(() => require('child_process').exec('shutdown now'), 12 * 60 * 60 * 1000);
+setTimeout(() => require('child_process').exec('shutdown -h now'), 12 * 60 * 60 * 1000);
 
 main();
