@@ -26,7 +26,7 @@ git clone https://github.com/PureGero/aws-ses-queue.git aws-ses-queue
 npm install aws-ses-queue
 
 # Get the aws region
-AWS_REGION=`curl -s http://169.254.169.254/latest/meta-data/placement/region`
+export AWS_REGION=`curl -s http://169.254.169.254/latest/meta-data/placement/region`
 
 # Run it
 node aws-ses-queue
