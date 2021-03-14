@@ -90,4 +90,6 @@ async function main() {
   require('child_process').exec('shutdown now');
 }
 
+setTimeout(() => require('child_process').exec('shutdown now'), 12 * 60 * 60 * 1000);
+
 main();
