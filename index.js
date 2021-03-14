@@ -86,6 +86,8 @@ async function main() {
     }
 
   } while (emailsSent);
+
+  require('child_process').exec('shutdown now');
 }
 
 main();
