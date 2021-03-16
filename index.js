@@ -58,6 +58,7 @@ async function sendEmail(mail) {
       },
       Source: mail.from,
     }).promise();
+    emailsSent++;
   } catch (e) {
     console.error(e);
   }
